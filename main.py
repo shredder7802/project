@@ -19,9 +19,7 @@ logging.basicConfig(level=logging.INFO)
 #inline клавиатура
 kb_menu = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Добавить событие",callback_data="new_event")],
-    [InlineKeyboardButton(text="Мои события", callback_data="my_events")],
-    [InlineKeyboardButton(text="Помощь", callback_data="help")],
-    [InlineKeyboardButton(text="Настройки", callback_data="settings")]
+    [InlineKeyboardButton(text="Мои события", callback_data="my_events")]
 ])
 
 kb_ = InlineKeyboardMarkup(inline_keyboard=[
@@ -59,7 +57,6 @@ kb_comment = InlineKeyboardMarkup(inline_keyboard=[
 #когда пользователь написал сообщение
 @dp.message()
 async def start(message):
-    global name, time, comment
     id = message.from_user.id
     if not db.user_exist(id):#если пользователя нет в бд
         db.add_user(id)#добавляем
@@ -71,6 +68,7 @@ async def start(message):
         name = message.text
         await message.answer('Введите комментарий к  событию, если он не нужен напишите: "-" ')
         db.update_field("users", id, "status", 3)
+        db.update_field("users", id, "name", name)
         return
     if status == 3:
         comment = message.text
@@ -78,15 +76,23 @@ async def start(message):
         #if len(time) != 16:
            # await message.answer("Неправильно! Укажи дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ")
         db.update_field("users", id, "status", 4)
+        db.update_field("users", id, "comment", comment)
         return
     if status == 4:
         time = message.text
-        db.get_field("events", id, "name")
-        db.get_field("events", id, "time")
-        db.get_field("events", id, "comment")
-        await message.answer(f"Событие: {name}, начнется: {time}", reply_markup=kb_comment)
-        db.update_field("users", id, "status", 4)
-
+        db.update_field("users", id, "time", time)
+        db.update_field("users", id, "status", 5)
+    if status == 5:
+        db.get_field("users", id, "name")
+        db.get_field("users", id, "time")
+        db.get_field("users", id, "comment")
+        current_time = datetime.now()
+        formatted_time = current_time.strftime("%d.%m.%Y %H:%M")
+        db.update_field('events', id, 'current_time', formatted_time)
+        if comment == "-":
+            await message.answer(f"Событие: {name}, начнется: {time}")
+        else:
+            await message.answer(f"Событие: {name}, начнется: {time}", reply_markup=kb_comment)
         return
 #когда пользователь нажал на inline кнопку
 @dp.callback_query()

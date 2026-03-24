@@ -32,5 +32,13 @@ class SQL:
         with self.connection:
             self.cursor.execute(query, (value, id))
 
+
+    def add_resume(self, name, comment, time):
+        query = "INSERT INTO resume (name, comment, time) VALUES(?,?,?)"
+        with self.connection:
+            return self.cursor.execute(query, (name, age, mail, post, salary, id_user))
+
+
+
     def close(self):
         self.connection.close()
