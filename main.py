@@ -29,6 +29,11 @@ kb_ = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Настройки", callback_data="settings")]
 ])
 
+kb_yesorno = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Да",callback_data="yes")],
+    [InlineKeyboardButton(text="Нет", callback_data="no")]
+])
+
 Keyboard = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="/start", callback_data="")]
@@ -75,12 +80,19 @@ async def start(message):
         await message.answer("Теперь укажи дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ")
         #if len(time) != 16:
            # await message.answer("Неправильно! Укажи дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ")
+
         db.update_field("users", id, "status", 4)
         db.update_field("users", id, "comment", comment)
         return
     if status == 4:
         time = message.text
-        db.update_field("users", id, "time", time)
+        try:
+
+            event_time = datetime.strptime(time, "%Y.%m.%d %H:%M")
+            db.update_field("users", id, "time", time)
+            await message.answer(f"Время сохранено: {event_time}")
+        except ValueError:
+            await message.answer("Неправильный формат!\nВведи дату так:\n28.03.2026 15:30")
         db.update_field("users", id, "status", 5)
     if status == 5:
         db.get_field("users", id, "name")
@@ -89,23 +101,37 @@ async def start(message):
         current_time = datetime.now()
         formatted_time = current_time.strftime("%d.%m.%Y %H:%M")
         db.update_field('events', id, 'current_time', formatted_time)
-        if comment == "-":
-            await message.answer(f"Событие: {name}, начнется: {time}")
-        else:
-            await message.answer(f"Событие: {name}, начнется: {time}", reply_markup=kb_comment)
-        return
+
 #когда пользователь нажал на inline кнопку
 @dp.callback_query()
 async def start_call(call):
     id = call.from_user.id
     if not db.user_exist(id):#если пользователя нет в бд
         db.add_user(id)#добавляем
+
     if call.data == "new_event":  # проверка нажатия на кнопку
         db.update_field("users", id, "status", 2)
         await call.message.answer("Введите название события: ")
+
     if call.data == "open_comment":  # проверка нажатия на кнопку
         await call.message.answer(f"Ваш комментарий: {comment}")
 
+    if call.data == "yes":
+        name = db.get_field("users", id, "name")
+        comment = db.get_field("users", id, "comment")
+        time = db.get_field("users", id, "time")
+        db.add_resume(name, comment, time, id)
+        db.update_field("users", id, "status", 0)  # изменяем статус пользователя
+        if comment == "-":
+            await message.answer(f"Событие: {name}, начнется: {time}")
+        else:
+            await message.answer(f"Событие: {name}, начнется: {time}", reply_markup=kb_comment)
+        return
+
+    if call.data == "no":
+        db.update_field("users", id, "status", 0)  # изменяем статус пользователя
+        await call.answer("Ваше событие удалено!")
+        await call.message.delete()
 
 
 
