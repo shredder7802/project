@@ -87,12 +87,11 @@ async def start(message):
     if status == 4:
         time = message.text
         try:
-
             event_time = datetime.strptime(time, "%Y.%m.%d %H:%M")
             db.update_field("users", id, "time", time)
             await message.answer(f"Время сохранено: {event_time}")
         except ValueError:
-            await message.answer("Неправильный формат!\nВведи дату так:\n28.03.2026 15:30")
+            await message.answer("Неправильный формат!\nВведи дату такого формата:\n28.03.2026 15:30")
         db.update_field("users", id, "status", 5)
     if status == 5:
         db.get_field("users", id, "name")
@@ -101,6 +100,7 @@ async def start(message):
         current_time = datetime.now()
         formatted_time = current_time.strftime("%d.%m.%Y %H:%M")
         db.update_field('events', id, 'current_time', formatted_time)
+
 
 #когда пользователь нажал на inline кнопку
 @dp.callback_query()
