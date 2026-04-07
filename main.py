@@ -19,14 +19,9 @@ logging.basicConfig(level=logging.INFO)
 #inline клавиатура
 kb_menu = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Добавить событие",callback_data="new_event")],
-    [InlineKeyboardButton(text="Мои события", callback_data="my_events")]
-])
-
-kb_ = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="Добавить событие",callback_data="new_event")],
     [InlineKeyboardButton(text="Мои события", callback_data="my_events")],
-    [InlineKeyboardButton(text="Помощь", callback_data="help")],
-    [InlineKeyboardButton(text="Настройки", callback_data="settings")]
+    [InlineKeyboardButton(text="Настройка событий", callback_data="settings_events")]
+
 ])
 
 kb_yesorno = InlineKeyboardMarkup(inline_keyboard=[
@@ -55,6 +50,10 @@ kb_events = InlineKeyboardMarkup(inline_keyboard=[
 kb_comment = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Открыть комментарий",callback_data="open_comment")]
     ])
+keyboard = ReplyKeyboardMarkup(
+        [["/start"]],
+        resize_keyboard=True
+    )
 #когда пользователь написал/start
 
 
@@ -92,6 +91,7 @@ async def start(message):
             await message.answer(f"Время сохранено: {event_time}")
         except ValueError:
             await message.answer("Неправильный формат!\nВведи дату такого формата:\n28.03.2026 15:30")
+
         db.update_field("users", id, "status", 5)
     if status == 5:
         db.get_field("users", id, "name")
@@ -123,9 +123,9 @@ async def start_call(call):
         db.add_resume(name, comment, time, id)
         db.update_field("users", id, "status", 0)  # изменяем статус пользователя
         if comment == "-":
-            await message.answer(f"Событие: {name}, начнется: {time}")
+            await call.message.answer(f"Событие: {name}, начнется: {time}")
         else:
-            await message.answer(f"Событие: {name}, начнется: {time}", reply_markup=kb_comment)
+            await call.message.answer(f"Событие: {name}, начнется: {time}", reply_markup=kb_comment)
         return
 
     if call.data == "no":
@@ -133,7 +133,9 @@ async def start_call(call):
         await call.answer("Ваше событие удалено!")
         await call.message.delete()
 
-
+    if call.data == "my_events":
+        db.update_field("users", id, "status", 6)# изменяем статус пользователя
+        await call.message.answer("Настройки событий: ", reply_markup=kb_comment)
 
 
 
