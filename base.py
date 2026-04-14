@@ -33,10 +33,10 @@ class SQL:
             self.cursor.execute(query, (value, id))
 
 
-    def add_event(self, name, comment, time):
-        query = "INSERT INTO resume (name, comment, time) VALUES(?,?,?)"
+    def add_event(self, name, comment, time, id):
+        query = "INSERT INTO events (name, comment, time, id) VALUES(?,?,?,?)"
         with self.connection:
-            return self.cursor.execute(query, (name, comment, time))
+            return self.cursor.execute(query, (name, comment, time, id))
 
     def close(self):
         self.connection.close()

@@ -7,11 +7,13 @@ from aiogram.types import ReplyKeyboardRemove, \
     ReplyKeyboardMarkup, KeyboardButton, \
     InlineKeyboardMarkup, InlineKeyboardButton
 from datetime import datetime
+from aiogram.client.session.aiohttp import AiohttpSession# для хостинга
 
+session = AiohttpSession(proxy='http://proxy.server:3128') # в proxy указан прокси сервер pythonanywhere, он нужен для подключения
+bot = Bot(token=config.TOKEN, session=session)
 
 db = SQL('db.db')  # соединение с БД
 
-bot = Bot(token=config.TOKEN)
 dp = Dispatcher()
 
 logging.basicConfig(level=logging.INFO)
@@ -22,11 +24,15 @@ kb_menu = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Мои события", callback_data="my_events")]
 ])
 
-kb_ = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="Добавить событие",callback_data="new_event")],
-    [InlineKeyboardButton(text="Мои события", callback_data="my_events")],
-    [InlineKeyboardButton(text="Помощь", callback_data="help")],
-    [InlineKeyboardButton(text="Настройки", callback_data="settings")]
+kb_events = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="Один раз", callback_data="reminder_once")],
+    [InlineKeyboardButton(text="Каждый день", callback_data="reminder_daily")],
+    [InlineKeyboardButton(text="Каждую неделю", callback_data="reminder_weekly")],
+    [InlineKeyboardButton(text="Каждый месяц", callback_data="reminder_monthly")],
+    [InlineKeyboardButton(text="Определенные дни", callback_data="reminder_custom_days")],
+    [InlineKeyboardButton(text="Определенные числа", callback_data="reminder_custom_dates")],
+    [InlineKeyboardButton(text="По умолчанию (за день и час)", callback_data="reminder_default")],
+    [InlineKeyboardButton(text="Без напоминаний", callback_data="reminder_none")]
 ])
 
 kb_yesorno = InlineKeyboardMarkup(inline_keyboard=[
@@ -86,57 +92,47 @@ async def start(message):
         return
     if status == 4:
         time = message.text
+        name = db.get_field("users", id, "name")
+        comment = db.get_field("users", id, "comment")
         try:
-            event_time = datetime.strptime(time, "%Y.%m.%d %H:%M")
-            db.update_field("users", id, "time", time)
-            await message.answer(f"Время сохранено: {event_time}")
+            event_time = datetime.strptime(time, "%d.%m.%Y %H:%M")
+            current_time = datetime.now()
+            if event_time < current_time:
+                await message.answer(f"Нельзя создать событие в прошлом!\nТы ввел: {event_time.strftime('%d.%m.%Y %H:%M')}\nСейчас: {current_time.strftime('%d.%m.%Y %H:%M')}\nПожалуйста, введи будущую дату и время")
+                return
+            db.update_field("users", id, "time", event_time)
+            formatted_current_time = current_time.strftime("%d.%m.%Y %H:%M")
+            db.update_field('events', id, 'current_time', formatted_current_time)
+            await message.answer("Выбери как часто событие будет напоминаться: ")
+            #await message.answer(f"Подтвердите событие: {name} Начнется: {event_time.strftime('%d.%m.%Y %H:%M')} Ваш комментарий: {comment}",reply_markup=kb_yesorno)
         except ValueError:
-            await message.answer("Неправильный формат!\nВведи дату такого формата:\n28.03.2026 15:30")
-        db.update_field("users", id, "status", 5)
-    if status == 5:
-        db.get_field("users", id, "name")
-        db.get_field("users", id, "time")
-        db.get_field("users", id, "comment")
-        current_time = datetime.now()
-        formatted_time = current_time.strftime("%d.%m.%Y %H:%M")
-        db.update_field('events', id, 'current_time', formatted_time)
+            await message.answer("Неправильный формат! Введи дату такого формата: 28.03.2026 15:30")
 
-
-#когда пользователь нажал на inline кнопку
+# когда пользователь нажал на inline кнопку
 @dp.callback_query()
 async def start_call(call):
     id = call.from_user.id
-    if not db.user_exist(id):#если пользователя нет в бд
-        db.add_user(id)#добавляем
+    if not db.user_exist(id):# если пользователя нет в бд
+        db.add_user(id)# добавляем
 
     if call.data == "new_event":  # проверка нажатия на кнопку
         db.update_field("users", id, "status", 2)
         await call.message.answer("Введите название события: ")
 
-    if call.data == "open_comment":  # проверка нажатия на кнопку
-        await call.message.answer(f"Ваш комментарий: {comment}")
+    if call.data == "no":
+        db.update_field("users", id, "status", 1)  # изменяем статус пользователя
+        await call.answer("Ваше событие удалено!")
+        await call.message.delete()
 
     if call.data == "yes":
         name = db.get_field("users", id, "name")
         comment = db.get_field("users", id, "comment")
         time = db.get_field("users", id, "time")
-        db.add_resume(name, comment, time, id)
-        db.update_field("users", id, "status", 0)  # изменяем статус пользователя
-        if comment == "-":
-            await message.answer(f"Событие: {name}, начнется: {time}")
-        else:
-            await message.answer(f"Событие: {name}, начнется: {time}", reply_markup=kb_comment)
-        return
-
-    if call.data == "no":
-        db.update_field("users", id, "status", 0)  # изменяем статус пользователя
-        await call.answer("Ваше событие удалено!")
+        db.add_event(name, comment, time, id)
+          # изменяем статус пользователя
+        await call.answer("Событие сохранено!")
         await call.message.delete()
-
-
-
-
-
+        db.update_field("users", id, "status", 1)
 
     #await call.answer("Оповещение сверху")
     #await call.message.answer("Отправка сообщения")
