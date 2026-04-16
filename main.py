@@ -40,17 +40,14 @@ kb_yesorno = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Нет", callback_data="no")]
 ])
 
-Keyboard = ReplyKeyboardMarkup(
-    keyboard=[
-        [KeyboardButton(text="/start", callback_data="")]
-             ],
-        one_time_keyboard=True
-)
-
 buttons = [
-        [KeyboardButton(text="/start")]
-    ]
-kb = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
+    [KeyboardButton(text="/start")]
+]
+kb = ReplyKeyboardMarkup(
+    keyboard=buttons,
+    resize_keyboard=True,
+    one_time_keyboard=False
+)
 
 kb_events = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Удалить событие",callback_data="delete_event")],
@@ -75,6 +72,10 @@ async def start(message):
     if message.text == "/start":
         db.update_field("users", id, "status", 1) #изменяем статус пользователя
         await message.answer("Главное меню: ", reply_markup=kb_menu)#отправка сообщения с клавиатурой
+    if status == 1:
+        db.update_field("users", id, "name", "")
+        db.update_field("users", id, "comment", "")
+        db.update_field("users", id, "time", "")
     if status == 2:
         name = message.text
         await message.answer('Введите комментарий к  событию, если он не нужен напишите: "-" ')
@@ -116,20 +117,26 @@ async def start_call(call):
         db.add_user(id)# добавляем
 
     if call.data == "new_event":  # проверка нажатия на кнопку
+        db.update_field("users", id, "name", "")  # очищаем
+        db.update_field("users", id, "comment", "")  # очищаем
+        db.update_field("users", id, "time", "")  # очищаем
         db.update_field("users", id, "status", 2)
         await call.message.answer("Введите название события: ")
 
     if call.data == "no":
+        db.update_field("users", id, "name", "")
+        db.update_field("users", id, "comment", "")
+        db.update_field("users", id, "time", "")
         db.update_field("users", id, "status", 1)  # изменяем статус пользователя
         await call.answer("Ваше событие удалено!")
         await call.message.delete()
 
     if call.data == "yes":
+
         name = db.get_field("users", id, "name")
         comment = db.get_field("users", id, "comment")
         time = db.get_field("users", id, "time")
         db.add_event(name, comment, time, id)
-          # изменяем статус пользователя
         await call.answer("Событие сохранено!")
         await call.message.delete()
         db.update_field("users", id, "status", 1)
