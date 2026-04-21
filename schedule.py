@@ -1,4 +1,3 @@
-# scheduler.py - новый файл
 import asyncio
 from datetime import datetime
 from aiogram import Bot
@@ -10,15 +9,13 @@ async def reminder_scheduler(bot: Bot, db):
             # Получаем текущее время в нужном формате
             now = datetime.now()
             now_str = now.strftime("%Y-%m-%d %H:%M:00")
-
             # Ищем напоминания для отправки
             reminders = db.get_reminders_to_send(now_str)
-
             if reminders:
                 print(f"Найдено {len(reminders)} напоминаний для отправки")
 
                 for reminder in reminders:
-                    reminder_id, user_id, event_id, title, description, event_time, remind_at = reminder
+                    reminder_id, user_id, event_id, name, comment, event_time, remind_at = reminder
 
                     try:
                         # Преобразуем время события в datetime
@@ -43,9 +40,9 @@ async def reminder_scheduler(bot: Bot, db):
 
                         message_text = (
                             f"🔔 НАПОМИНАНИЕ 🔔\n\n"
-                            f"📌 {title}\n"
-                            f"📝 {description if description != '-' else 'Без описания'}\n"
-                            f"🕒 {event_time_obj.strftime('%d.%m.%Y в %H:%M')}\n"
+                            f"📌 {name}\n"
+                            f"📝 {comment if comment != '-' else 'Без описания'}\n"
+                            f"🕒 {event_time.strftime('%d.%m.%Y в %H:%M')}\n"
                             f"⏳ {time_text}"
                         )
 
@@ -64,4 +61,4 @@ async def reminder_scheduler(bot: Bot, db):
 
         except Exception as e:
             print(f"❌ Ошибка в планировщике: {e}")
-            await asyncio.sleep(60)
+            await asyncio.sleep(30)
