@@ -41,8 +41,6 @@ class SQL:
     def close(self):
         self.connection.close()
 
-    # Добавь эти методы в класс SQL в файл base.py
-
     # Добавление события с возвратом ID
     def add_event_and_get_id(self, name, comment, time, user_id):
         query = "INSERT INTO events (name, comment, time, user_id) VALUES(?,?,?,?)"
@@ -87,3 +85,11 @@ class SQL:
         query = "UPDATE users SET status = ? WHERE id = ?"
         with self.connection:
             self.cursor.execute(query, (status, user_id))
+def save_reminder(self, user_id, event_id, title, description, event_time, remind_at, reminder_type):
+    query = """
+        INSERT INTO reminders (user_id, event_id, title, description, event_time, remind_at, reminder_type, is_sent)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+    """
+    with self.connection:
+        self.cursor.execute(query, (user_id, event_id, title, description, event_time, remind_at, reminder_type))
+        return self.cursor.lastrowid

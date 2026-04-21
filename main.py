@@ -29,10 +29,7 @@ kb_events = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Каждый день", callback_data="reminder_daily")],
     [InlineKeyboardButton(text="Каждую неделю", callback_data="reminder_weekly")],
     [InlineKeyboardButton(text="Каждый месяц", callback_data="reminder_monthly")],
-    [InlineKeyboardButton(text="Определенные дни", callback_data="reminder_custom_days")],
-    [InlineKeyboardButton(text="Определенные числа", callback_data="reminder_custom_dates")],
-    [InlineKeyboardButton(text="По умолчанию (за день и час)", callback_data="reminder_default")],
-    [InlineKeyboardButton(text="Без напоминаний", callback_data="reminder_none")]
+    [InlineKeyboardButton(text="По умолчанию (за день и час)", callback_data="reminder_default")]
 ])
 
 kb_yesorno = InlineKeyboardMarkup(inline_keyboard=[
@@ -49,12 +46,13 @@ kb = ReplyKeyboardMarkup(
     one_time_keyboard=False
 )
 
-kb_events = InlineKeyboardMarkup(inline_keyboard=[
-    [InlineKeyboardButton(text="Удалить событие",callback_data="delete_event")],
-    [InlineKeyboardButton(text="Изменить время", callback_data="my_events")],
-    [InlineKeyboardButton(text="помощь", callback_data="help")],
-    [InlineKeyboardButton(text="Настройки", callback_data="settings")]
-])
+# kb_events2 = InlineKeyboardMarkup(inline_keyboard=[
+#     [InlineKeyboardButton(text="Удалить событие",callback_data="delete_event")],
+#     [InlineKeyboardButton(text="Изменить время", callback_data="my_events")],
+#     [InlineKeyboardButton(text="помощь", callback_data="help")],
+#     [InlineKeyboardButton(text="Настройки", callback_data="settings")]
+# ])
+
 kb_comment = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="Открыть комментарий",callback_data="open_comment")]
     ])
@@ -101,13 +99,28 @@ async def start(message):
             if event_time < current_time:
                 await message.answer(f"Нельзя создать событие в прошлом!\nТы ввел: {event_time.strftime('%d.%m.%Y %H:%M')}\nСейчас: {current_time.strftime('%d.%m.%Y %H:%M')}\nПожалуйста, введи будущую дату и время")
                 return
-            db.update_field("users", id, "time", event_time)
+            db.update_field("users", id, "event_time", event_time)
             formatted_current_time = current_time.strftime("%d.%m.%Y %H:%M")
             db.update_field('events', id, 'current_time', formatted_current_time)
-            await message.answer("Выбери как часто событие будет напоминаться: ")
+            await message.answer("Выбери как часто событие будет напоминаться: ", reply_markup=kb_events)
             #await message.answer(f"Подтвердите событие: {name} Начнется: {event_time.strftime('%d.%m.%Y %H:%M')} Ваш комментарий: {comment}",reply_markup=kb_yesorno)
         except ValueError:
             await message.answer("Неправильный формат! Введи дату такого формата: 28.03.2026 15:30")
+    if status == 5:
+        name = db.get_field("users", id, "name")
+        comment = db.get_field("users", id, "comment")
+        event_time = db.get_field("users", id, "event_time")
+        await call.message.answer(
+            f"📝 Подтверди событие:\n\n"
+            f"📌 {name}\n"
+            f"📝 {comment}\n"
+            f"🕒 {event_time.strftime('%d.%m.%Y в %H:%M')}\n"
+            f"⏳ {time_text}\n\n"
+            f"🔔 Напоминание: в момент начала события\n\n"
+            f"Всё верно?",
+            reply_markup=kb_yesorno
+        )
+
 
 # когда пользователь нажал на inline кнопку
 @dp.callback_query()
@@ -119,7 +132,7 @@ async def start_call(call):
     if call.data == "new_event":  # проверка нажатия на кнопку
         db.update_field("users", id, "name", "")  # очищаем
         db.update_field("users", id, "comment", "")  # очищаем
-        db.update_field("users", id, "time", "")  # очищаем
+        db.update_field("users", id, "event_time", "")  # очищаем
         db.update_field("users", id, "status", 2)
         await call.message.answer("Введите название события: ")
 
@@ -132,14 +145,36 @@ async def start_call(call):
         await call.message.delete()
 
     if call.data == "yes":
-
         name = db.get_field("users", id, "name")
         comment = db.get_field("users", id, "comment")
-        time = db.get_field("users", id, "time")
+        event_time = db.get_field("users", id, "event_time")
         db.add_event(name, comment, time, id)
         await call.answer("Событие сохранено!")
         await call.message.delete()
         db.update_field("users", id, "status", 1)
+
+    if call.data == "reminder_once":
+        event_time = db.get_field("users", id, "event_time")
+        now = datetime.now()
+
+        time_left = event_time - now
+        days_left = time_left.days
+        hours_left = time_left.seconds // 3600
+        minutes_left = (time_left.seconds % 3600) // 60
+
+        # Формируем сообщение сколько осталось
+        if days_left > 0:
+            time_text = f"Осталось {days_left} дн {hours_left} ч"
+        elif hours_left > 0:
+            time_text = f"Осталось {hours_left} ч {minutes_left} мин"
+        else:
+            time_text = f"Осталось {minutes_left} мин"
+
+        db.update_field("users", id, "status", 5)
+        await call.answer()
+
+    if call.data == "reminder_daily":
+        pass
 
     #await call.answer("Оповещение сверху")
     #await call.message.answer("Отправка сообщения")
