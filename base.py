@@ -1,95 +1,78 @@
 import sqlite3
+from datetime import datetime
+
 
 class SQL:
     def __init__(self, database):
-        self.connection = sqlite3.connect(database)
+        self.connection = sqlite3.connect(database, check_same_thread=False)
         self.cursor = self.connection.cursor()
 
-    # Добавление пользователя в БД
-    def add_user(self, id):
-        query = "INSERT INTO users (id) VALUES(?)"
+    def add_user(self, user_id):
+        query = "INSERT INTO users (id) VALUES (?)"
         with self.connection:
-            return self.cursor.execute(query, (id,))
+            self.cursor.execute(query, (user_id,))
 
-    # Проверка, есть ли пользователь в БД
-    def user_exist(self, id):
-        query = "SELECT * FROM users WHERE id = ?"
+    def user_exist(self, user_id):
+        query = "SELECT id FROM users WHERE id = ?"
         with self.connection:
-            result = self.cursor.execute(query, (id,)).fetchall()
-            return bool(len(result))
+            result = self.cursor.execute(query, (user_id,)).fetchone()
+            return result is not None
 
-    # Получить значение поля
-    def get_field(self, table, id, field):
-        query = f"SELECT {field} FROM {table} WHERE id = ?"
+    def get_field(self, user_id, field):
+        query = f"SELECT {field} FROM users WHERE id = ?"
         with self.connection:
-            result = self.cursor.execute(query, (id,)).fetchone()
-            if result:
-                return result[0]
+            result = self.cursor.execute(query, (user_id,)).fetchone()
+            return result[0] if result else None
 
-    # Обновить значение поля
-    def update_field(self, table, id, field, value):
-        query = f"UPDATE {table} SET {field} = ? WHERE id = ?"
+    def update_field(self, user_id, field, value):
+        query = f"UPDATE users SET {field} = ? WHERE id = ?"
         with self.connection:
-            self.cursor.execute(query, (value, id))
+            self.cursor.execute(query, (value, user_id))
 
-
-    def add_event(self, name, comment, time, id):
-        query = "INSERT INTO events (name, comment, time, id) VALUES(?,?,?,?)"
+    def add_event(self, user_id, name, comment, event_time):
+        current_time = datetime.now().strftime("%d.%m.%Y %H:%M")
+        query = "INSERT INTO events (id, name, comment, time, current_time) VALUES (?, ?, ?, ?, ?)"
         with self.connection:
-            return self.cursor.execute(query, (name, comment, time, id))
-
-    def close(self):
-        self.connection.close()
-
-    # Добавление события с возвратом ID
-    def add_event_and_get_id(self, name, comment, time, user_id):
-        query = "INSERT INTO events (name, comment, time, user_id) VALUES(?,?,?,?)"
-        with self.connection:
-            self.cursor.execute(query, (name, comment, time, user_id))
+            self.cursor.execute(query, (user_id, name, comment, event_time, current_time))
             return self.cursor.lastrowid
 
-    # Сохранение напоминания
-    def add_reminder(self, user_id, event_id, title, description, event_time, remind_at, reminder_type='once'):
-        query = """INSERT INTO reminders 
-                   (user_id, event_id, title, description, event_time, remind_at, reminder_type) 
-                   VALUES(?,?,?,?,?,?,?)"""
+    def get_user_events(self, user_id):
+        query = "SELECT event_id, name, time, current_time FROM events WHERE id = ? ORDER BY time"
         with self.connection:
-            self.cursor.execute(query, (user_id, event_id, title, description, event_time, remind_at, reminder_type))
+            return self.cursor.execute(query, (user_id,)).fetchall()
+
+    def get_event_by_id(self, event_id):
+        query = "SELECT event_id, name, comment, time, current_time FROM events WHERE event_id = ?"
+        with self.connection:
+            return self.cursor.execute(query, (event_id,)).fetchone()
+
+    def delete_event(self, event_id):
+        with self.connection:
+            self.cursor.execute("DELETE FROM reminders WHERE event_id = ?", (event_id,))
+            self.cursor.execute("DELETE FROM events WHERE event_id = ?", (event_id,))
+
+    def add_reminder(self, event_id, remind_at, type_remind):
+        query = "INSERT INTO reminders (event_id, remind_at, type_remind, is_sent) VALUES (?, ?, ?, 0)"
+        with self.connection:
+            self.cursor.execute(query, (event_id, remind_at, type_remind))
             return self.cursor.lastrowid
 
-    # Получить все неотправленные напоминания до указанного времени
-    def get_reminders_to_send(self, current_time):
-        query = """SELECT id, user_id, event_id, title, description, event_time, remind_at 
-                   FROM reminders 
-                   WHERE remind_at <= ? AND is_sent = 0"""
+    def get_pending_reminders(self, now_str):
+        # Возвращаем все неотправленные — проверка времени идёт в scheduler через now >= remind_dt
+        query = """
+            SELECT r.id, r.event_id, r.remind_at, r.type_remind,
+                   e.name, e.comment, e.time, e.id
+            FROM reminders r
+            JOIN events e ON r.event_id = e.event_id
+            WHERE r.is_sent = 0
+        """
         with self.connection:
-            return self.cursor.execute(query, (current_time,)).fetchall()
+            return self.cursor.execute(query, ()).fetchall()
 
-    # Отметить напоминание как отправленное
-    def mark_reminder_as_sent(self, reminder_id):
+    def mark_sent(self, reminder_id):
         query = "UPDATE reminders SET is_sent = 1 WHERE id = ?"
         with self.connection:
             self.cursor.execute(query, (reminder_id,))
 
-    # Получить время события по event_id
-    def get_event_time_by_id(self, event_id):
-        query = "SELECT time FROM events WHERE id = ?"
-        with self.connection:
-            result = self.cursor.execute(query, (event_id,)).fetchone()
-            if result:
-                return result[0]
-        return None
-
-    # Обновить статус пользователя (уже есть, но добавлю для ясности)
-    def update_status(self, user_id, status):
-        query = "UPDATE users SET status = ? WHERE id = ?"
-        with self.connection:
-            self.cursor.execute(query, (status, user_id))
-def save_reminder(self, user_id, event_id, title, description, event_time, remind_at, reminder_type):
-    query = """
-        INSERT INTO reminders (user_id, event_id, title, description, event_time, remind_at, reminder_type, is_sent)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-    """
-    with self.connection:
-        self.cursor.execute(query, (user_id, event_id, title, description, event_time, remind_at, reminder_type))
-        return self.cursor.lastrowid
+    def close(self):
+        self.connection.close()
