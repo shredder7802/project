@@ -8,7 +8,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup, KeyboardButton
 )
 from aiogram.client.session.aiohttp import AiohttpSession
-from datetime import datetime
+from datetime import datetime, timedelta
 from base import SQL
 from schedule import reminder_scheduler
 
@@ -38,7 +38,6 @@ kb_confirm = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="❌ Нет", callback_data="confirm_no")]
 ])
 
-# За сколько напомнить — для каждого типа повтора своя клавиатура
 kb_advance_once = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="⏰ За 5 минут", callback_data="adv_5m")],
     [InlineKeyboardButton(text="⏰ За 10 минут", callback_data="adv_10m")],
@@ -56,17 +55,21 @@ kb_advance_daily = InlineKeyboardMarkup(inline_keyboard=[
 kb_advance_weekly = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📅 За 1 день", callback_data="adv_1440m")],
     [InlineKeyboardButton(text="📅 За 3 дня", callback_data="adv_4320m")],
-    [InlineKeyboardButton(text="🔔 В момент события", callback_data="adv_0m")]
+    [InlineKeyboardButton(text="� В момент собaытия", callback_data="adv_0m")]
 ])
 
 kb_advance_monthly = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="📅 За 1 день", callback_data="adv_1440m")],
     [InlineKeyboardButton(text="📅 За 3 дня", callback_data="adv_4320m")],
     [InlineKeyboardButton(text="📅 За 1 неделю", callback_data="adv_10080m")],
-    [InlineKeyboardButton(text="🔔 В момент события", callback_data="adv_0m")]
+    [InlineKeyboardButton(text="� В момент события", callback_data="adv_0m")]
 ])
 
-# Карта: тип повтора -> клавиатура выбора времени
+kb_start = ReplyKeyboardMarkup(
+    keyboard=[[KeyboardButton(text="/start")]],
+    resize_keyboard=True
+)
+
 FREQ_ADVANCE_KB = {
     "once": kb_advance_once,
     "daily": kb_advance_daily,
@@ -74,7 +77,6 @@ FREQ_ADVANCE_KB = {
     "monthly": kb_advance_monthly,
 }
 
-# Метки для advance кнопок
 ADVANCE_LABELS = {
     "adv_0m":     (0,     "В момент события"),
     "adv_5m":     (5,     "За 5 минут"),
@@ -88,15 +90,10 @@ ADVANCE_LABELS = {
     "adv_10080m": (10080, "За 1 неделю"),
 }
 
-kb_start = ReplyKeyboardMarkup(
-    keyboard=[[KeyboardButton(text="/start")]],
-    resize_keyboard=True
-)
-
 FREQ_LABELS = {
-    "freq_once": ("once", "Один раз"),
-    "freq_daily": ("daily", "Каждый день"),
-    "freq_weekly": ("weekly", "Каждую неделю"),
+    "freq_once":    ("once",    "Один раз"),
+    "freq_daily":   ("daily",   "Каждый день"),
+    "freq_weekly":  ("weekly",  "Каждую неделю"),
     "freq_monthly": ("monthly", "Каждый месяц")
 }
 
@@ -120,19 +117,16 @@ async def handle_message(message: Message):
 
     status = db.get_field(user_id, "status")
 
-    # Статус 2: ждём название
     if status == 2:
         db.update_field(user_id, "name", message.text)
         db.update_field(user_id, "status", 3)
         await message.answer('Введите комментарий к событию (или "-" если не нужен):')
 
-    # Статус 3: ждём комментарий
     elif status == 3:
         db.update_field(user_id, "comment", message.text)
         db.update_field(user_id, "status", 4)
         await message.answer("Укажи дату и время в формате ДД.ММ.ГГГГ ЧЧ:ММ\nПример: 28.05.2026 15:30")
 
-    # Статус 4: ждём дату и время
     elif status == 4:
         try:
             event_dt = datetime.strptime(message.text.strip(), "%d.%m.%Y %H:%M")
@@ -148,7 +142,7 @@ async def handle_message(message: Message):
             db.update_field(user_id, "status", 5)
             await message.answer("Как часто напоминать?", reply_markup=kb_frequency)
         except ValueError:
-            await message.answer("Неправильный формат! Пример: 28.05.2026 15:30")
+            await message.answer("Неправильный формат! Пример: 21.05.2026 19:30")
 
 
 # --- Inline-кнопки ---
@@ -171,14 +165,45 @@ async def handle_callback(call: CallbackQuery):
         if not events:
             await call.message.answer("У тебя пока нет событий.")
         else:
-            text = "📋 Твои события:\n\n"
-            for ev_id, name, ev_time in events:
+            now = datetime.now()
+            for event_id, name, ev_time, created_at in events:
                 try:
-                    dt = datetime.strptime(ev_time, "%d.%m.%Y %H:%M")
-                    text += f"📌 {name} — {dt.strftime('%d.%m.%Y %H:%M')}\n"
+                    event_dt = datetime.strptime(ev_time, "%d.%m.%Y %H:%M")
+                    diff = event_dt - now
+                    total_minutes = int(diff.total_seconds() // 60)
+
+                    if total_minutes <= 0:
+                        time_left = "уже прошло"
+                    elif total_minutes < 60:
+                        time_left = f"через {total_minutes} мин"
+                    elif total_minutes < 1440:
+                        time_left = f"через {total_minutes // 60} ч {total_minutes % 60} мин"
+                    else:
+                        days = total_minutes // 1440
+                        hours = (total_minutes % 1440) // 60
+                        time_left = f"через {days} дн {hours} ч"
+
+                    text = (
+                        f"📌 {name}\n"
+                        f"🕒 {ev_time}\n"
+                        f"⏳ {time_left}\n"
+                        f"📅 Добавлено: {created_at}"
+                    )
+                    kb_event_item = InlineKeyboardMarkup(inline_keyboard=[
+                        [InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del_{event_id}")]
+                    ])
+                    await call.message.answer(text, reply_markup=kb_event_item)
                 except Exception:
-                    text += f"📌 {name} — {ev_time}\n"
-            await call.message.answer(text)
+                    await call.message.answer(f"📌 {name} — {ev_time}")
+
+    elif call.data.startswith("del_"):
+        event_id = int(call.data.split("_")[1])
+        event = db.get_event_by_id(event_id)
+        if event:
+            db.delete_event(event_id)
+            await call.message.edit_text(f"🗑 Событие «{event[1]}» удалено.")
+        else:
+            await call.answer("Событие не найдено.", show_alert=True)
 
     elif call.data in FREQ_LABELS:
         freq_type, freq_label = FREQ_LABELS[call.data]
@@ -190,7 +215,6 @@ async def handle_callback(call: CallbackQuery):
         )
 
     elif call.data == "freq_default":
-        from datetime import timedelta
         name = db.get_field(user_id, "name")
         comment = db.get_field(user_id, "comment")
         event_time_str = db.get_field(user_id, "event_time")
@@ -203,7 +227,7 @@ async def handle_callback(call: CallbackQuery):
             f"📝 Подтверди событие:\n\n"
             f"📌 Название: {name}\n"
             f"💬 Комментарий: {comment if comment != '-' else 'Нет'}\n"
-            f"🕒 Время: {event_dt.strftime('%d.%m.%Y в %H:%M')}\n"
+            f"🕒 Время: {event_dt.strftime('%d.%m.%Y %H:%M')}\n"
             f"🔔 Напоминание: за 1 день и за 1 час до события\n\n"
             f"Всё верно?",
             reply_markup=kb_confirm
@@ -227,7 +251,7 @@ async def handle_callback(call: CallbackQuery):
             f"📝 Подтверди событие:\n\n"
             f"📌 Название: {name}\n"
             f"💬 Комментарий: {comment if comment != '-' else 'Нет'}\n"
-            f"🕒 Время: {event_dt.strftime('%d.%m.%Y в %H:%M')}\n"
+            f"🕒 Время: {event_dt.strftime('%d.%m.%Y %H:%M')}\n"
             f"🔁 Повтор: {repeat_text}\n"
             f"🔔 Напоминание: {advance_label}\n\n"
             f"Всё верно?",
@@ -235,7 +259,6 @@ async def handle_callback(call: CallbackQuery):
         )
 
     elif call.data == "confirm_yes":
-        from datetime import timedelta
         name = db.get_field(user_id, "name")
         comment = db.get_field(user_id, "comment")
         event_time_str = db.get_field(user_id, "event_time")
@@ -257,10 +280,14 @@ async def handle_callback(call: CallbackQuery):
             db.add_reminder(event_id, remind_at_str, reminder_type)
 
         db.update_field(user_id, "status", 1)
+        await call.message.delete()
+        print("р")
         await call.message.answer(f"✅ Событие «{name}» сохранено! Напомню в нужное время.")
 
     elif call.data == "confirm_no":
         db.update_field(user_id, "status", 1)
+        await call.message.delete()
+        print("р2")
         await call.message.answer("Отменено. Возвращаю в меню.", reply_markup=kb_menu)
 
 
